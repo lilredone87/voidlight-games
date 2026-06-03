@@ -1,0 +1,2136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Void Gardener — Cosmic Cultivation</title>
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#020412;font-family:'Segoe UI',system-ui,sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#game{position:relative;width:100%;height:100%}
+canvas{display:block;position:absolute;inset:0;cursor:crosshair}
+#ui{position:absolute;inset:0;pointer-events:none;z-index:10}
+#ui>*{pointer-events:auto}
+
+/* ── Top Bar ───────────────────── */
+#topbar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(2,4,18,.88);backdrop-filter:blur(8px);border-bottom:1px solid rgba(120,140,255,.1);flex-wrap:wrap;gap:4px}
+#essence-display{display:flex;align-items:center;gap:8px}
+#essence-icon{font-size:22px}
+#essence-value{font-size:20px;font-weight:700;background:linear-gradient(135deg,#d4a0ff,#4dc9f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+#essence-rate{font-size:11px;color:#6a7aaa;margin-left:4px}
+#topbar-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#star-count{font-size:12px;color:#8090cc;margin-right:4px}
+#event-indicator{font-size:12px;color:#ffaa44;opacity:0;transition:opacity .3s}
+#event-indicator.active{opacity:1}
+.top-btn{background:rgba(120,140,255,.08);border:1px solid rgba(120,140,255,.18);color:#a0b8e0;padding:5px 10px;border-radius:7px;font-size:11px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.top-btn:hover{background:rgba(120,140,255,.2);color:#e0e8ff}
+.top-btn.danger{color:#ff6666;border-color:rgba(255,100,100,.25)}
+.top-btn.danger:hover{background:rgba(255,100,100,.15)}
+.top-btn .badge{display:inline-block;background:#7b2ff7;color:#fff;border-radius:8px;padding:0 5px;font-size:9px;margin-left:3px;min-width:16px;text-align:center}
+.top-btn.audio-on{color:#31d0aa;border-color:rgba(49,208,170,.3)}
+.top-btn.audio-on:hover{background:rgba(49,208,170,.1)}
+
+/* ── Tooltip ──────────────────── */
+#star-tooltip{position:absolute;pointer-events:none;background:rgba(4,8,24,.94);backdrop-filter:blur(12px);border:1px solid rgba(120,140,255,.2);border-radius:14px;padding:14px 18px;max-width:240px;opacity:0;transform:translate(-50%,-120%);transition:opacity .2s;z-index:12}
+#star-tooltip.show{opacity:1}
+#star-tooltip .tt-name{color:#fff;font-size:14px;font-weight:700;margin-bottom:6px}
+#star-tooltip .tt-stat{display:flex;justify-content:space-between;font-size:11px;color:#8090cc;padding:2px 0}
+#star-tooltip .tt-stat span:last-child{color:#a0b8e0;font-weight:500}
+#star-tooltip .tt-bar{height:3px;background:rgba(120,140,255,.15);border-radius:2px;margin:4px 0 8px;overflow:hidden}
+#star-tooltip .tt-bar-fill{height:100%;background:linear-gradient(90deg,#7b2ff7,#4dc9f6);border-radius:2px;transition:width .3s}
+
+/* ── Zoom Controls ────────────── */
+#zoom-controls{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;z-index:5}
+.zoom-btn{width:34px;height:34px;border-radius:8px;border:1px solid rgba(120,140,255,.2);background:rgba(4,8,24,.85);color:#a0b8e0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;backdrop-filter:blur(8px)}
+.zoom-btn:hover{background:rgba(120,140,255,.15);color:#fff}
+.zoom-btn .reset-icon{font-size:13px}
+
+/* ── Galaxy Map ───────────────── */
+#galaxy-overlay{position:fixed;inset:0;background:rgba(2,4,18,.92);z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+#galaxy-overlay.show{display:flex}
+#galaxy-map{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:500px;width:90vw;padding:20px}
+.galaxy-sector{aspect-ratio:1;border-radius:14px;border:2px solid rgba(120,140,255,.2);background:rgba(10,14,30,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;text-align:center;padding:8px}
+.galaxy-sector:hover{border-color:rgba(120,140,255,.5);background:rgba(20,24,50,.8);transform:scale(1.03)}
+.galaxy-sector.locked{opacity:.4;cursor:not-allowed;filter:grayscale(.5)}
+.galaxy-sector.locked:hover{transform:none;border-color:rgba(120,140,255,.2)}
+.galaxy-sector.selected{border-color:#4dc9f6;box-shadow:0 0 20px rgba(77,201,246,.3)}
+.galaxy-sector .gs-name{font-size:12px;font-weight:700;color:#e0e8ff;margin-top:4px}
+.galaxy-sector .gs-guild{font-size:9px;color:#8090cc;margin-top:2px}
+.galaxy-sector .gs-influence{font-size:9px;margin-top:2px}
+.galaxy-sector .gs-lock{font-size:18px;position:absolute}
+.galaxy-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer}
+.galaxy-title{color:#d4a0ff;font-size:20px;margin-bottom:8px}
+.galaxy-subtitle{color:#8090cc;font-size:12px;margin-bottom:16px}
+
+/* ── Monster health bar ───────── */
+.monster-hp{position:absolute;font-size:9px;color:#ff8888;pointer-events:none;text-shadow:0 0 4px rgba(0,0,0,.8)}
+
+/* ── Sector info in topbar ───── */
+#sector-info{font-size:11px;color:#8090cc;margin-right:8px}
+
+/* ── Star Selector ──────────────── */
+#star-selector{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:rgba(2,4,18,.92);backdrop-filter:blur(8px);border:1px solid rgba(120,140,255,.15);border-radius:16px;padding:8px;flex-wrap:wrap;justify-content:center;max-width:96vw;z-index:5}
+.star-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 10px;border-radius:10px;border:2px solid transparent;background:rgba(10,14,30,.6);color:#8090cc;cursor:pointer;transition:all .2s;min-width:62px}
+.star-btn:hover{border-color:rgba(120,140,255,.3);background:rgba(20,24,50,.8)}
+.star-btn.selected{border-color:#7b2ff7;background:rgba(123,47,247,.15);color:#fff;box-shadow:0 0 20px rgba(123,47,247,.3)}
+.star-btn .icon{font-size:22px}
+.star-btn .name{font-size:10px;font-weight:600;white-space:nowrap}
+.star-btn .cost{font-size:9px;color:#5a7aaa}
+.star-btn.locked{opacity:.38;cursor:not-allowed;filter:grayscale(1)}
+.star-btn.locked:hover{border-color:transparent;background:rgba(10,14,30,.6)}
+
+/* ── Tutorial ───────────────────── */
+#tutorial{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(2,4,18,.96);backdrop-filter:blur(14px);border:1px solid rgba(120,140,255,.2);border-radius:20px;padding:32px;text-align:center;max-width:420px;width:90vw;pointer-events:auto;animation:fadeIn .5s ease;z-index:20}
+@keyframes fadeIn{from{opacity:0;transform:translate(-50%,-50%) translateY(20px)}to{opacity:1;transform:translate(-50%,-50%) translateY(0)}}
+#tutorial h2{color:#d4a0ff;font-size:22px;margin-bottom:8px}
+#tutorial p{color:#8090cc;font-size:13px;line-height:1.6;margin-bottom:16px}
+#tutorial button{background:linear-gradient(135deg,#7b2ff7,#4dc9f6);color:#fff;border:none;padding:10px 28px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+#tutorial button:hover{transform:translateY(-1px);box-shadow:0 0 20px rgba(123,47,247,.4)}
+
+/* ── Notifications ──────────────── */
+#notification{position:absolute;top:70px;left:50%;transform:translateX(-50%);pointer-events:none;font-size:14px;font-weight:600;color:#ffaa44;text-shadow:0 0 10px rgba(255,170,68,.5);opacity:0;transition:opacity .3s;z-index:15}
+#notification.show{opacity:1}
+
+/* ── Slide Panels ───────────────── */
+#panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:25;opacity:0;pointer-events:none;transition:opacity .3s}
+#panel-overlay.show{opacity:1;pointer-events:auto}
+.slide-panel{position:fixed;top:0;right:0;width:380px;max-width:92vw;height:100%;background:rgba(4,8,24,.97);backdrop-filter:blur(16px);border-left:1px solid rgba(120,140,255,.15);z-index:30;transform:translateX(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);overflow-y:auto;padding:0}
+.slide-panel.open{transform:translateX(0)}
+.panel-header{display:flex;justify-content:space-between;align-items:center;padding:20px;border-bottom:1px solid rgba(120,140,255,.12);position:sticky;top:0;background:rgba(4,8,24,.98);z-index:2}
+.panel-header h3{color:#d4a0ff;font-size:18px;margin:0}
+.panel-close{background:none;border:none;color:#8090cc;font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .2s}
+.panel-close:hover{color:#fff;background:rgba(255,255,255,.05)}
+.panel-body{padding:20px}
+
+/* ── Roadmap ────────────────────── */
+.roadmap-section{margin-bottom:20px}
+.roadmap-section h4{color:#4dc9f6;font-size:13px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+.roadmap-item{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;background:rgba(10,14,30,.5);border:1px solid rgba(120,140,255,.08);border-radius:10px;margin-bottom:8px;transition:all .2s}
+.roadmap-item:hover{border-color:rgba(120,140,255,.2);background:rgba(15,20,40,.6)}
+.roadmap-item .ri-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.roadmap-item .ri-content{flex:1}
+.roadmap-item .ri-title{color:#e0e8ff;font-size:13px;font-weight:600;margin-bottom:2px}
+.roadmap-item .ri-desc{color:#6a7aaa;font-size:11px;line-height:1.4}
+.roadmap-status{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.5px}
+.roadmap-status.planned{background:rgba(77,201,246,.1);color:#4dc9f6;border:1px solid rgba(77,201,246,.2)}
+.roadmap-status.building{background:rgba(255,209,102,.1);color:#ffd166;border:1px solid rgba(255,209,102,.2)}
+.roadmap-status.soon{background:rgba(49,208,170,.1);color:#31d0aa;border:1px solid rgba(49,208,170,.2)}
+
+/* ── Suggestions Form ───────────── */
+.suggestion-form{margin-bottom:20px}
+.suggestion-form label{display:block;color:#8090cc;font-size:11px;margin-bottom:4px;letter-spacing:.5px}
+.suggestion-form input,.suggestion-form textarea{width:100%;background:rgba(10,14,30,.6);border:1px solid rgba(120,140,255,.15);border-radius:8px;padding:10px;color:#e0e8ff;font-size:13px;font-family:inherit;resize:vertical;transition:border-color .2s}
+.suggestion-form input:focus,.suggestion-form textarea:focus{outline:none;border-color:#7b2ff7}
+.suggestion-form textarea{min-height:80px;margin-bottom:10px}
+.suggestion-form .submit-row{display:flex;justify-content:space-between;align-items:center}
+.suggestion-form .char-count{font-size:10px;color:#4a5580}
+.suggestion-form button{background:linear-gradient(135deg,#7b2ff7,#4dc9f6);color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;transition:all .2s}
+.suggestion-form button:hover{box-shadow:0 0 15px rgba(123,47,247,.3)}
+.suggestion-form button:disabled{opacity:.5;cursor:not-allowed}
+.suggestion-item{background:rgba(10,14,30,.4);border:1px solid rgba(120,140,255,.06);border-radius:10px;padding:12px;margin-bottom:8px}
+.suggestion-item .si-header{display:flex;justify-content:space-between;margin-bottom:6px}
+.suggestion-item .si-name{color:#a0b8e0;font-size:12px;font-weight:600}
+.suggestion-item .si-date{color:#4a5580;font-size:10px}
+.suggestion-item .si-text{color:#8090cc;font-size:12px;line-height:1.5}
+.suggestion-item .si-tag{display:inline-block;background:rgba(123,47,247,.1);color:#b794ff;border-radius:4px;padding:1px 6px;font-size:10px;margin-top:6px;margin-right:4px}
+.empty-state{text-align:center;padding:40px 20px;color:#4a5580}
+.empty-state .es-icon{font-size:40px;margin-bottom:10px}
+.empty-state p{font-size:12px;line-height:1.6}
+
+/* ── Version Badge ──────────────── */
+#version-badge{position:absolute;bottom:8px;right:12px;font-size:10px;color:#4a5580;pointer-events:none;z-index:3}
+
+@media(max-width:600px){
+  #star-selector{bottom:8px;padding:6px;gap:3px}
+  .star-btn{padding:5px 7px;min-width:52px}
+  .star-btn .icon{font-size:18px}
+  .star-btn .name{font-size:8px}
+  .star-btn .cost{font-size:7px}
+  #topbar{padding:8px 10px}
+  #essence-value{font-size:16px}
+  .top-btn{padding:4px 7px;font-size:10px}
+  .slide-panel{width:100%;max-width:100%}
+}
+
+/* ── Void Shop ────────────────── */
+#shop-overlay{position:fixed;inset:0;background:rgba(2,4,18,.92);z-index:45;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+#shop-overlay.show{display:flex}
+#shop-modal{background:rgba(10,14,30,.95);border:1px solid rgba(120,140,255,.2);border-radius:20px;padding:28px;max-width:420px;width:90vw;text-align:center;backdrop-filter:blur(12px);animation:fadeIn .3s ease}
+#shop-modal h2{color:#d4a0ff;font-size:20px;margin-bottom:4px}
+#shop-modal .shop-subtitle{color:#8090cc;font-size:11px;margin-bottom:16px}
+.shop-product{background:rgba(10,14,30,.5);border:1px solid rgba(120,140,255,.1);border-radius:14px;padding:16px;margin-bottom:10px;text-align:left;transition:all .2s;cursor:pointer;position:relative}
+.shop-product:hover{border-color:rgba(120,140,255,.3);background:rgba(20,24,50,.6)}
+.shop-product.owned{border-color:rgba(49,208,170,.3);background:rgba(49,208,170,.05)}
+.shop-product .sp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.shop-product .sp-name{color:#fff;font-size:14px;font-weight:700}
+.shop-product .sp-price{color:#ffd166;font-size:14px;font-weight:700}
+.shop-product .sp-desc{color:#8090cc;font-size:11px;line-height:1.5}
+.shop-product .sp-badge{position:absolute;top:10px;right:10px;background:rgba(49,208,170,.15);color:#31d0aa;font-size:10px;padding:2px 8px;border-radius:6px}
+.shop-close{position:absolute;top:16px;right:16px;background:none;border:none;color:#8090cc;font-size:20px;cursor:pointer}
+.shop-powered{color:#4a5580;font-size:10px;margin-top:12px}
+
+/* ── Login Screen ──────────────── */
+#login-overlay{position:fixed;inset:0;background:rgba(2,4,18,.96);z-index:50;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)}
+#login-box{background:rgba(10,14,30,.95);border:1px solid rgba(120,140,255,.2);border-radius:20px;padding:32px;max-width:380px;width:90vw;text-align:center;animation:fadeIn .4s ease}
+#login-box h2{color:#d4a0ff;font-size:22px;margin-bottom:4px}
+#login-box .login-sub{color:#8090cc;font-size:11px;margin-bottom:20px}
+#login-box input{width:100%;background:rgba(10,14,30,.6);border:1px solid rgba(120,140,255,.15);border-radius:8px;padding:10px;color:#e0e8ff;font-size:14px;margin-bottom:10px;font-family:inherit;transition:border-color .2s}
+#login-box input:focus{outline:none;border-color:#7b2ff7}
+#login-box button{width:100%;padding:10px;border-radius:8px;border:none;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px;transition:all .2s}
+#login-box .btn-primary{background:linear-gradient(135deg,#7b2ff7,#4dc9f6);color:#fff}
+#login-box .btn-primary:hover{box-shadow:0 0 15px rgba(123,47,247,.3)}
+#login-box .btn-secondary{background:rgba(120,140,255,.1);color:#a0b8e0;margin-top:8px;font-size:12px}
+#login-box .login-error{color:#ff6666;font-size:11px;margin-top:8px;min-height:16px}
+#login-box .login-toggle{color:#8090cc;font-size:11px;margin-top:12px}
+#login-box .login-toggle a{color:#4dc9f6;cursor:pointer;text-decoration:underline}
+#login-welcome{color:#a0b8e0;font-size:12px;position:absolute;top:60px;left:50%;transform:translateX(-50%);white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas"></canvas>
+  <div id="ui">
+    <!-- Top Bar -->
+    <div id="topbar">
+      <div id="essence-display">
+        <span id="essence-icon">✦</span>
+        <span id="essence-value">0</span>
+        <span id="essence-rate">+0/s</span>
+      </div>
+      <div id="topbar-right">
+        <span id="event-indicator"></span>
+        <span id="star-count">Stars: 0</span>
+        <button class="top-btn" id="btn-roadmap">🗺️ Roadmap</button>
+        <button class="top-btn" id="btn-suggestions">💬 Feedback <span class="badge" id="sug-count" style="display:none">0</span></button>
+        <button class="top-btn" id="btn-audio" title="Toggle audio">🔇 Audio Off</button>
+        <button class="top-btn" id="btn-galaxy" title="Galaxy Map">🗺️ Galaxy</button>
+        <button class="top-btn" id="btn-shop" title="Void Shop" style="color:#ffd166;border-color:rgba(255,209,102,.3)">🛒 Shop</button>
+        <button class="top-btn" id="btn-save">💾 Save</button>
+        <button class="top-btn" id="btn-load">📂 Load</button>
+        <button class="top-btn danger" id="btn-reset">↺ Reset</button>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notification"></div>
+
+    <!-- Star Selector -->
+    <div id="star-selector"></div>
+
+    <!-- Zoom Controls -->
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="btn-zoom-in" title="Zoom In">+</button>
+      <button class="zoom-btn" id="btn-zoom-reset" title="Reset View"><span class="reset-icon">⌂</span></button>
+      <button class="zoom-btn" id="btn-zoom-out" title="Zoom Out">−</button>
+    </div>
+
+    <!-- Star Tooltip -->
+    <div id="star-tooltip"></div>
+
+    <!-- Version -->
+    <div id="version-badge">v1.3.0-beta</div>
+
+    <!-- Galaxy Map Overlay -->
+    <div id="galaxy-overlay">
+      <div class="galaxy-title">🌌 Cosmic Galaxy Map</div>
+      <div class="galaxy-subtitle">Unlock sectors • Challenge guilds • Expand your territory</div>
+      <div id="galaxy-map"></div>
+      <div style="margin-top:12px;color:#8090cc;font-size:11px">Click a sector to travel • Locked sectors require essence to unlock</div>
+      <button class="galaxy-close" onclick="toggleGalaxyMap()">✕</button>
+    </div>
+
+    <!-- Login Overlay -->
+    <div id="login-overlay">
+      <div id="login-box">
+        <h2>🌌 Void Gardener</h2>
+        <div class="login-sub" id="login-subtitle">Create an account to save your garden</div>
+        <input type="text" id="login-username" placeholder="Username" maxlength="20" autocomplete="username">
+        <input type="password" id="login-password" placeholder="Password" maxlength="50" autocomplete="current-password">
+        <button class="btn-primary" id="btn-login-action">Create Account & Play</button>
+        <div class="login-error" id="login-error"></div>
+        <div class="login-toggle">Already have an account? <a id="login-toggle-link">Log in</a></div>
+      </div>
+    </div>
+    <div id="login-welcome" style="display:none"></div>
+
+    <!-- Void Shop Overlay -->
+    <div id="shop-overlay">
+      <div id="shop-modal">
+        <button class="shop-close" onclick="toggleShop()">✕</button>
+        <h2>🛒 Void Shop</h2>
+        <div class="shop-subtitle">Support the game • Unlock premium content • No subscriptions required</div>
+        <div id="shop-products"></div>
+        <div class="shop-powered">🔒 Secure payments via Stripe • Purchases saved to your browser</div>
+      </div>
+    </div>
+
+    <!-- Tutorial -->
+    <div id="tutorial">
+      <h2>🌌 Welcome, Void Gardener</h2>
+      <p>Plant stars in the cosmic void. Select a star type below, then tap the void to plant. Your stars generate <b>Cosmic Essence</b> — use it to plant more. Watch civilizations bloom across your galaxy!</p>
+      <p style="font-size:11px;color:#5a7aaa">💡 Tip: Use keys <b>1-5</b> to switch star types, <b>Ctrl+S</b> to save</p>
+      <button id="btn-start">Begin Gardening →</button>
+    </div>
+
+    <!-- Panel Overlay -->
+    <div id="panel-overlay" onclick="closePanel()"></div>
+
+    <!-- Roadmap Panel -->
+    <div class="slide-panel" id="roadmap-panel">
+      <div class="panel-header">
+        <h3>🗺️ Development Roadmap</h3>
+        <button class="panel-close" onclick="closePanel()">✕</button>
+      </div>
+      <div class="panel-body" id="roadmap-content"></div>
+    </div>
+
+    <!-- Suggestions Panel -->
+    <div class="slide-panel" id="suggestions-panel">
+      <div class="panel-header">
+        <h3>💬 Feedback &amp; Suggestions</h3>
+        <button class="panel-close" onclick="closePanel()">✕</button>
+      </div>
+      <div class="panel-body">
+        <div class="suggestion-form" id="suggestion-form">
+          <label>Your Name <span style="color:#4a5580">(optional)</span></label>
+          <input type="text" id="sug-name" placeholder="Void Gardener" maxlength="30">
+          <label>Your Suggestion</label>
+          <textarea id="sug-text" placeholder="What would make Void Gardener better? Found a bug? Let us know..." maxlength="500"></textarea>
+          <div class="submit-row">
+            <span class="char-count" id="char-count">0/500</span>
+            <button id="btn-submit-suggestion" disabled>Send Feedback ✦</button>
+          </div>
+        </div>
+        <div style="margin-top:4px;margin-bottom:16px">
+          <h4 style="color:#4dc9f6;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Recent Feedback</h4>
+        </div>
+        <div id="suggestions-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+// ═══════════════════════════════════════════════════════════
+// VOID GARDENER v1.2.0-beta — Cosmic Cultivation Game
+// Voidlight Games © 2026
+// ═══════════════════════════════════════════════════════════
+
+// ─── CANVAS POLYFILLS ──────────────────────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+    this.beginPath();
+    this.moveTo(x + r.tl, y);
+    this.lineTo(x + w - r.tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    this.lineTo(x + w, y + h - r.br);
+    this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    this.lineTo(x + r.bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    this.lineTo(x, y + r.tl);
+    this.quadraticCurveTo(x, y, x + r.tl, y);
+    this.closePath();
+  };
+}
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// ─── STAR TYPES ──────────────────────────────────────
+const STAR_TYPES = [
+  { id:'red_dwarf',   name:'Red Dwarf',    icon:'🔴', cost:50,  growth:0.3,  essence:0.5,  color:'#ff6644', glow:'#ff4422', size:18, desc:'Steady & reliable' },
+  { id:'yellow',      name:'Yellow Star',  icon:'☀️', cost:150, growth:0.5,  essence:1.2,  color:'#ffe8a0', glow:'#ffcc44', size:24, desc:'Life-bearing warmth', planets:true },
+  { id:'blue_giant',  name:'Blue Giant',   icon:'💎', cost:400, growth:1.0,  essence:3.0,  color:'#88ccff', glow:'#4499ff', size:32, desc:'Powerful, unstable', unstable:true },
+  { id:'neutron',     name:'Neutron Star', icon:'💫', cost:1000,growth:0.2,  essence:8.0,  color:'#ddddff', glow:'#aaaaff', size:14, desc:'Dense & intense' },
+  { id:'quantum',     name:'Quantum Star', icon:'🌀', cost:2500,growth:0.15, essence:20.0, color:'#ff88ff', glow:'#ff44ff', size:20, desc:'Unpredictable power', quantum:true },
+];
+
+// ─── ROADMAP ─────────────────────────────────────────
+const ROADMAP = [
+  { section:'✅ Recently Added (v0.9.5)', status:'soon', items:[
+    { icon:'🔊', title:'Ambient Audio & Sound FX', desc:'Space drone, planting chimes, unlock fanfares, event rumbles — full Web Audio' },
+    { icon:'🔍', title:'Zoom & Pan Navigation', desc:'Mouse wheel zoom, Shift+drag pan, pinch-to-zoom on mobile' },
+    { icon:'📊', title:'Star Info Tooltips', desc:'Tap any star for stats. Now includes Upgrade button to boost output' },
+    { icon:'⬆️', title:'Star Upgrading System', desc:'Spend essence to level up stars. Each level adds +25% essence output' },
+    { icon:'🏆', title:'Achievement System', desc:'12 achievements: First Light, Galaxy Architect, Cosmic Collector, Star Forge & more' },
+    { icon:'🌠', title:'More Cosmic Events', desc:'7 event types: black holes, cosmic rays, nebulae, meteors, void storms, alien signals, rogue planets' },
+  ]},
+  { section:'🚀 Coming Next', status:'soon', items:[
+    { icon:'📱', title:'PWA & Offline Support', desc:'Install as an app, play offline. Service worker + Add to Home Screen' },
+    { icon:'🌐', title:'Public Deployment', desc:'Live on lilredone87.github.io — share your garden with the world' },
+    { icon:'🎨', title:'Visual Themes', desc:'Nebula color palettes: Cosmic Coral, Deep Void, Aurora, Solar Flare' },
+  ]},
+  { section:'📋 Planned', status:'planned', items:[
+    { icon:'👥', title:'Community Gardens', desc:'Visit other players\' gardens, leave stardust gifts, compare galaxies' },
+    { icon:'🛒', title:'Premium Content', desc:'Exclusive star skins, essence packs, special nebula themes (via Stripe)' },
+    { icon:'📈', title:'Leaderboards', desc:'Most stars, highest essence rate, most achievements unlocked' },
+  ]},
+];
+
+// ─── GAME STATE ──────────────────────────────────────
+let state = {
+  essence: 100,
+  stars: [],
+  particles: [],
+  notifications: [],
+  selectedStar: 0,
+  lastTick: performance.now(),
+  totalEssence: 0,
+  starsPlanted: 0,
+  tutorialShown: true,
+  currentEvent: null,
+  eventTimer: 0,
+  eventsTriggered: 0,
+  unlockedTypes: [true, false, false, false, false],
+  monsters: [],
+  monsterKills: 0,
+  galaxy: {
+    sectors: [],
+    unlocked: [4], // center sector starts unlocked
+    influence: {}, // sector index -> influence points
+    selectedSector: 4,
+  },
+};
+
+// ─── MONSTER TYPES ────────────────────────────────────
+const MONSTER_TYPES = [
+  { id:'void_spawn', name:'Void Spawn', icon:'👾', hp:3, speed:0.3, damage:8, essence:30, color:'#ff4488', size:10, desc:'Weak but fast' },
+  { id:'nebula_wraith', name:'Nebula Wraith', icon:'👻', hp:6, speed:0.2, damage:15, essence:60, color:'#aa66ff', size:14, desc:'Drains essence' },
+  { id:'cosmic_horror', name:'Cosmic Horror', icon:'🦑', hp:12, speed:0.12, damage:30, essence:150, color:'#22aa44', size:20, desc:'Star devourer' },
+  { id:'void_dragon', name:'Void Dragon', icon:'🐉', hp:20, speed:0.15, damage:50, essence:350, color:'#ff6600', size:26, desc:'Boss creature' },
+  { id:'entropy_lord', name:'Entropy Lord', icon:'💀', hp:40, speed:0.08, damage:100, essence:1000, color:'#ffffff', size:32, desc:'Ends worlds' },
+];
+
+// ─── GALAXY SECTORS ──────────────────────────────────
+const GALAXY_SECTORS = [
+  { id:0, name:'Abyssal Rift', guild:'Void Walker Clan', guildColor:'#6644aa', unlockCost:2000, desc:'The deepest void' },
+  { id:1, name:'Nebula Expanse', guild:'Nebula Syndicate', guildColor:'#ff66aa', unlockCost:1500, desc:'Colorful gas clouds' },
+  { id:2, name:'Solar Forge', guild:'Solar Order', guildColor:'#ffaa00', unlockCost:1000, desc:'Where stars are born' },
+  { id:3, name:'Quantum Frontier', guild:'Quantum Collective', guildColor:'#ff44ff', unlockCost:3000, desc:'Reality bends here' },
+  { id:4, name:'Central Nexus', guild:'None (Your Home)', guildColor:'#4dc9f6', unlockCost:0, desc:'Your starting sector' },
+  { id:5, name:'Crystal Fields', guild:'Crystal Keepers', guildColor:'#44ffaa', unlockCost:1000, desc:'Crystalline formations' },
+  { id:6, name:'Dark Matter Reach', guild:'Shadow Council', guildColor:'#444466', unlockCost:2500, desc:'Invisible mass' },
+  { id:7, name:'Pulsar Wastes', guild:'Pulsar Nomads', guildColor:'#ff8844', unlockCost:2000, desc:'Harsh radiation zone' },
+  { id:8, name:'Eden Nebula', guild:'Garden Collective', guildColor:'#88ff88', unlockCost:5000, desc:'Lush cosmic garden' },
+];
+
+// Init galaxy
+state.galaxy.sectors = GALAXY_SECTORS.map(s => ({...s}));
+GALAXY_SECTORS.forEach(s => {
+  if (!state.galaxy.influence[s.id]) state.galaxy.influence[s.id] = s.id === 4 ? 50 : 0;
+});
+
+// ─── SUGGESTIONS STATE ──────────────────────────────
+let suggestions = [];
+
+// ═══════════════════════════════════════════════════════════
+// VOID SHOP — Stripe monetization with demo mode
+// ═══════════════════════════════════════════════════════════
+const STRIPE_PUBLISHABLE_KEY = 'pk_live_REPLACE_WITH_YOUR_STRIPE_KEY';
+const STRIPE_PRICES = {
+  starter:  'price_STARTER_ID',   // $0.99 one-time
+  premium:  'price_PREMIUM_ID',   // $2.99 one-time
+  voidpass: 'price_VOIDPASS_ID',  // $4.99/month
+};
+
+const SHOP_PRODUCTS = [
+  { id:'starter', name:'🚀 Starter Bundle', price:'$0.99', desc:'+300 starting essence • Yellow Star unlocked instantly • One-time purchase', features:['+300 essence','Yellow Star unlocked'] },
+  { id:'premium', name:'💎 Premium Seeds', price:'$2.99', desc:'+800 essence • Blue Giant unlocked • Exclusive gold star name color • One-time purchase', features:['+800 essence','Blue Giant unlocked','Gold name color'] },
+  { id:'voidpass', name:'🌟 Void Pass', price:'$4.99/mo', desc:'2x essence forever • All stars unlocked • Gold badge • Ad-free experience • Subscription', features:['2x essence forever','All stars unlocked','Gold badge','Early access to new features'] },
+];
+
+// Premium state
+let premium = { starter: false, premium: false, voidpass: false };
+try {
+  const saved = JSON.parse(localStorage.getItem('vg_premium') || '{}');
+  premium = { ...premium, ...saved };
+} catch(e) {}
+
+function savePremium() {
+  try { localStorage.setItem('vg_premium', JSON.stringify(premium)); } catch(e) {}
+}
+
+// Handle Stripe redirect return
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('purchase') === 'success') {
+    const product = params.get('product');
+    if (product && !premium[product]) {
+      premium[product] = true;
+      savePremium();
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
+
+// Stripe init
+let stripe = null;
+try {
+  if (STRIPE_PUBLISHABLE_KEY.startsWith('pk_')) {
+    stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+  }
+} catch(e) { console.log('Stripe not configured — demo mode active'); }
+
+function toggleShop() {
+  const overlay = document.getElementById('shop-overlay');
+  if (overlay.classList.contains('show')) {
+    overlay.classList.remove('show');
+  } else {
+    renderShop();
+    overlay.classList.add('show');
+  }
+}
+
+function renderShop() {
+  const container = document.getElementById('shop-products');
+  container.innerHTML = '';
+  SHOP_PRODUCTS.forEach(p => {
+    const owned = premium[p.id];
+    const div = document.createElement('div');
+    div.className = 'shop-product' + (owned ? ' owned' : '');
+    div.innerHTML = `
+      ${owned ? '<div class="sp-badge">✓ Owned</div>' : ''}
+      <div class="sp-header">
+        <span class="sp-name">${p.name}</span>
+        <span class="sp-price">${p.price}</span>
+      </div>
+      <div class="sp-desc">${p.desc}</div>
+    `;
+    if (!owned) {
+      div.addEventListener('click', () => buyProduct(p.id));
+    }
+    container.appendChild(div);
+  });
+}
+
+function buyProduct(productId) {
+  if (premium[productId]) {
+    showNotification('Already purchased! ✨');
+    return;
+  }
+
+  // Demo mode — simulate purchase
+  if (!stripe || STRIPE_PRICES[productId].startsWith('price_')) {
+    simulatePurchase(productId);
+    return;
+  }
+
+  // Real Stripe checkout
+  const product = SHOP_PRODUCTS.find(p => p.id === productId);
+  stripe.redirectToCheckout({
+    lineItems: [{ price: STRIPE_PRICES[productId], quantity: 1 }],
+    mode: productId === 'voidpass' ? 'subscription' : 'payment',
+    successUrl: window.location.href.split('?')[0] + '?purchase=success&product=' + productId,
+    cancelUrl: window.location.href.split('?')[0] + '?purchase=cancelled',
+  }).then(function(result) {
+    if (result.error) showNotification('Payment error: ' + result.error.message);
+  });
+}
+
+function simulatePurchase(productId) {
+  premium[productId] = true;
+  savePremium();
+  applyPremiumBenefits(productId);
+  renderShop();
+  showNotification('✅ Purchase successful! Premium unlocked ✨');
+  playSfx('unlock');
+}
+
+function applyPremiumBenefits(productId) {
+  if (productId === 'starter') {
+    state.essence += 300;
+    if (!state.unlockedTypes[1]) { state.unlockedTypes[1] = true; buildSelector(); }
+  } else if (productId === 'premium') {
+    state.essence += 800;
+    if (!state.unlockedTypes[2]) { state.unlockedTypes[2] = true; buildSelector(); }
+  }
+  // voidpass effects applied in calculateRate via premium check
+}
+
+// Premium gating for calculateRate
+function getVoidPassMultiplier() {
+  return premium.voidpass ? 2 : 1;
+}
+
+// Apply premium on load
+(function() {
+  if (premium.starter) { if (!state.unlockedTypes[1]) state.unlockedTypes[1] = true; }
+  if (premium.premium) { if (!state.unlockedTypes[2]) state.unlockedTypes[2] = true; }
+})();
+
+// ═══════════════════════════════════════════════════════════
+// USER ACCOUNTS — Login / Register / Server Save
+// ═══════════════════════════════════════════════════════════
+const API_BASE = window.location.origin;
+let vgUser = { token: null, username: null };
+let loginMode = 'register'; // 'register' or 'login'
+
+// Try restore session from localStorage
+try {
+  const saved = JSON.parse(localStorage.getItem('vg_user') || '{}');
+  if (saved.token) vgUser = saved;
+} catch(e) {}
+
+async function vgApi(endpoint, data) {
+  try {
+    const opts = { method: data ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' } };
+    if (data) opts.body = JSON.stringify(data);
+    const r = await fetch(API_BASE + endpoint, opts);
+    return await r.json();
+  } catch(e) { return { ok: false, error: 'Server unreachable' }; }
+}
+
+function showLoginError(msg) {
+  document.getElementById('login-error').textContent = msg;
+}
+
+async function handleLoginAction() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!username || !password) { showLoginError('Please fill in both fields'); return; }
+
+  const endpoint = loginMode === 'register' ? '/api/vg/register' : '/api/vg/login';
+  const result = await vgApi(endpoint, { username, password });
+
+  if (result.ok) {
+    vgUser = { token: result.token, username: result.username };
+    try { localStorage.setItem('vg_user', JSON.stringify(vgUser)); } catch(e) {}
+    finishLogin();
+  } else {
+    showLoginError(result.error || 'Something went wrong');
+  }
+}
+
+function finishLogin() {
+  document.getElementById('login-overlay').style.display = 'none';
+  const welcome = document.getElementById('login-welcome');
+  welcome.textContent = '👤 ' + vgUser.username;
+  welcome.style.display = 'block';
+
+  // Try loading server save
+  loadServerGame();
+
+  // Show tutorial or start game
+  state.tutorialShown = true;
+  document.getElementById('tutorial').style.display = '';
+  buildSelector();
+}
+
+async function loadServerGame() {
+  if (!vgUser.token) return;
+  try {
+    const params = new URLSearchParams({ vg_token: vgUser.token });
+    const r = await fetch(API_BASE + '/api/vg/load?' + params.toString());
+    const d = await r.json();
+    if (d.ok && d.game_data) {
+      // Merge server data into state
+      const data = d.game_data;
+      state.essence = data.essence || 100;
+      state.stars = (data.stars || []).map(s => {
+        s.growth = s.growth || 0; s.maxGrowth = s.maxGrowth || 100;
+        s.upgradeLevel = s.upgradeLevel || 0;
+        s.pulse = Math.random() * Math.PI * 2;
+        s.planets = s.planets || [];
+        return s;
+      });
+      state.totalEssence = data.totalEssence || 0;
+      state.starsPlanted = data.starsPlanted || 0;
+      state.eventsTriggered = data.eventsTriggered || 0;
+      state.unlockedTypes = data.unlockedTypes || [true,false,false,false,false];
+      state.achievements = data.achievements || {};
+      state.monsterKills = data.monsterKills || 0;
+      if (data.galaxy) {
+        state.galaxy.unlocked = data.galaxy.unlocked || [4];
+        state.galaxy.influence = data.galaxy.influence || {};
+        state.galaxy.selectedSector = data.galaxy.selectedSector || 4;
+        state.galaxy.sectors = GALAXY_SECTORS.map(s => ({...s}));
+        state.galaxy.sectors.forEach(s => {
+          if ((state.galaxy.influence[s.id]||0) >= 100 && s.id !== 4) { s.guild='Captured by You'; s.guildColor='#4dc9f6'; }
+        });
+      }
+      state.tutorialShown = false;
+      document.getElementById('tutorial').style.display = 'none';
+      unlockTypesByProgress();
+      buildSelector();
+      showNotification('☁️ Garden loaded from server!');
+    }
+  } catch(e) {}
+}
+
+async function saveServerGame() {
+  if (!vgUser.token) return;
+  const data = {
+    essence: state.essence,
+    stars: state.stars.map(s => ({...s, plantedAt: null})),
+    totalEssence: state.totalEssence,
+    starsPlanted: state.starsPlanted,
+    eventsTriggered: state.eventsTriggered,
+    unlockedTypes: state.unlockedTypes,
+    achievements: state.achievements,
+    monsterKills: state.monsterKills,
+    galaxy: {
+      unlocked: state.galaxy.unlocked,
+      influence: state.galaxy.influence,
+      selectedSector: state.galaxy.selectedSector,
+    },
+  };
+  const result = await vgApi('/api/vg/save', { token: vgUser.token, game_data: data });
+  return result.ok;
+}
+
+// Override saveGame to also save to server
+const _origSave = saveGame;
+saveGame = async function() {
+  _origSave();
+  if (vgUser.token) {
+    const ok = await saveServerGame();
+    if (ok) showNotification('☁️ Garden saved to cloud!');
+  }
+};
+
+function toggleLoginMode() {
+  loginMode = loginMode === 'register' ? 'login' : 'register';
+  document.getElementById('btn-login-action').textContent = loginMode === 'register' ? 'Create Account & Play' : 'Log In & Play';
+  document.getElementById('login-subtitle').textContent = loginMode === 'register' ? 'Create an account to save your garden' : 'Welcome back, Void Gardener';
+  document.getElementById('login-toggle-link').textContent = loginMode === 'register' ? 'Log in' : 'Create account';
+  document.getElementById('login-error').textContent = '';
+}
+
+// Wire login UI
+document.getElementById('btn-login-action').addEventListener('click', handleLoginAction);
+document.getElementById('login-toggle-link').addEventListener('click', toggleLoginMode);
+document.getElementById('login-password').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleLoginAction();
+});
+
+// Auto-login if session saved
+if (vgUser.token) {
+  (async () => {
+    // Verify token still valid
+    try {
+      const params = new URLSearchParams({ vg_token: vgUser.token });
+      const r = await fetch(API_BASE + '/api/vg/load?' + params.toString());
+      const d = await r.json();
+      if (d.ok || d.error !== 'Invalid session') {
+        finishLogin();
+        return;
+      }
+    } catch(e) {}
+    // Token invalid — show login
+    vgUser = { token: null, username: null };
+    localStorage.removeItem('vg_user');
+  })();
+} else {
+  // Show login overlay
+  document.getElementById('login-overlay').style.display = 'flex';
+}
+function loadSuggestions() {
+  try {
+    suggestions = JSON.parse(localStorage.getItem('voidgardener_suggestions') || '[]');
+  } catch(e) { suggestions = []; }
+}
+function saveSuggestions() {
+  localStorage.setItem('voidgardener_suggestions', JSON.stringify(suggestions));
+}
+
+// ─── RESIZE ──────────────────────────────────────────
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+// ─── PANELS ──────────────────────────────────────────
+let activePanel = null;
+function openPanel(id) {
+  if (activePanel) closePanel();
+  activePanel = id;
+  document.getElementById('panel-overlay').classList.add('show');
+  document.getElementById(id + '-panel').classList.add('open');
+  if (id === 'roadmap') renderRoadmap();
+  if (id === 'suggestions') renderSuggestionsList();
+}
+function closePanel() {
+  if (!activePanel) return;
+  document.getElementById('panel-overlay').classList.remove('show');
+  document.getElementById(activePanel + '-panel').classList.remove('open');
+  activePanel = null;
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+
+// ─── RENDER ROADMAP ──────────────────────────────────
+function renderRoadmap() {
+  const container = document.getElementById('roadmap-content');
+  let html = '';
+  ROADMAP.forEach(section => {
+    html += `<div class="roadmap-section"><h4>${section.section}</h4>`;
+    section.items.forEach(item => {
+      html += `<div class="roadmap-item">
+        <span class="ri-icon">${item.icon}</span>
+        <div class="ri-content">
+          <div class="ri-title">${item.title} <span class="roadmap-status ${section.status}">${section.status === 'soon' ? 'Coming Soon' : section.status === 'building' ? 'Building' : 'Planned'}</span></div>
+          <div class="ri-desc">${item.desc}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+// ─── SUGGESTIONS ─────────────────────────────────────
+function submitSuggestion() {
+  const nameEl = document.getElementById('sug-name');
+  const textEl = document.getElementById('sug-text');
+  const name = nameEl.value.trim() || 'Anonymous Gardener';
+  const text = textEl.value.trim();
+  if (!text || text.length < 3) return;
+
+  suggestions.unshift({
+    name,
+    text,
+    date: new Date().toISOString(),
+    id: Date.now(),
+  });
+  // Keep max 50
+  if (suggestions.length > 50) suggestions = suggestions.slice(0, 50);
+  saveSuggestions();
+  nameEl.value = '';
+  textEl.value = '';
+  updateCharCount();
+  updateSuggestionBadge();
+  renderSuggestionsList();
+  showNotification('💜 Thanks for your feedback! Your suggestion helps shape the game.');
+}
+
+function renderSuggestionsList() {
+  const container = document.getElementById('suggestions-list');
+  if (suggestions.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="es-icon">💬</div><p>No suggestions yet.<br>Be the first to share your ideas!</p></div>`;
+    return;
+  }
+  let html = '';
+  suggestions.forEach(s => {
+    const d = new Date(s.date);
+    const dateStr = d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+    const tags = [];
+    if (s.text.toLowerCase().includes('sound') || s.text.toLowerCase().includes('audio') || s.text.toLowerCase().includes('music')) tags.push('Audio');
+    if (s.text.toLowerCase().includes('bug') || s.text.toLowerCase().includes('fix') || s.text.toLowerCase().includes('broken')) tags.push('Bug');
+    if (s.text.toLowerCase().includes('star') || s.text.toLowerCase().includes('planet')) tags.push('Gameplay');
+    if (s.text.toLowerCase().includes('mobile') || s.text.toLowerCase().includes('phone')) tags.push('Mobile');
+    if (s.text.toLowerCase().includes('save') || s.text.toLowerCase().includes('load')) tags.push('Save');
+    const tagsHtml = tags.map(t => `<span class="si-tag">${t}</span>`).join('');
+
+    html += `<div class="suggestion-item">
+      <div class="si-header"><span class="si-name">${escapeHtml(s.name)}</span><span class="si-date">${dateStr}</span></div>
+      <div class="si-text">${escapeHtml(s.text)}</div>
+      ${tagsHtml ? '<div>' + tagsHtml + '</div>' : ''}
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function updateCharCount() {
+  const textEl = document.getElementById('sug-text');
+  const count = textEl.value.length;
+  document.getElementById('char-count').textContent = `${count}/500`;
+  document.getElementById('btn-submit-suggestion').disabled = count < 3;
+}
+
+function updateSuggestionBadge() {
+  const badge = document.getElementById('sug-count');
+  if (suggestions.length > 0) {
+    badge.style.display = 'inline-block';
+    badge.textContent = suggestions.length;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ─── SAVE / LOAD ─────────────────────────────────────
+function saveGame() {
+  const data = {
+    essence: state.essence,
+    stars: state.stars.map(s => ({...s, plantedAt: null})),
+    totalEssence: state.totalEssence,
+    starsPlanted: state.starsPlanted,
+    eventsTriggered: state.eventsTriggered,
+    unlockedTypes: state.unlockedTypes,
+    achievements: state.achievements,
+    monsterKills: state.monsterKills,
+    galaxy: {
+      unlocked: state.galaxy.unlocked,
+      influence: state.galaxy.influence,
+      selectedSector: state.galaxy.selectedSector,
+    },
+  };
+  localStorage.setItem('voidgardener_save', JSON.stringify(data));
+  showNotification('💾 Garden saved!');
+}
+
+function loadGame() {
+  const raw = localStorage.getItem('voidgardener_save');
+  if (!raw) { showNotification('No saved garden found — start planting!'); return; }
+  try {
+    const data = JSON.parse(raw);
+    state.essence = data.essence || 100;
+    state.stars = (data.stars || []).map(s => {
+      s.growth = s.growth || 0;
+      s.maxGrowth = s.maxGrowth || 100;
+      s.upgradeLevel = s.upgradeLevel || 0;
+      s.pulse = Math.random() * Math.PI * 2;
+      s.planets = s.planets || [];
+      return s;
+    });
+    state.totalEssence = data.totalEssence || 0;
+    state.starsPlanted = data.starsPlanted || 0;
+    state.eventsTriggered = data.eventsTriggered || 0;
+    state.unlockedTypes = data.unlockedTypes || [true,false,false,false,false];
+    state.achievements = data.achievements || {};
+    state.monsterKills = data.monsterKills || 0;
+    state.monsters = [];
+    if (data.galaxy) {
+      state.galaxy.unlocked = data.galaxy.unlocked || [4];
+      state.galaxy.influence = data.galaxy.influence || {};
+      state.galaxy.selectedSector = data.galaxy.selectedSector || 4;
+    }
+    state.galaxy.sectors = GALAXY_SECTORS.map(s => ({...s}));
+    // Restore captured guilds
+    state.galaxy.sectors.forEach(s => {
+      if ((state.galaxy.influence[s.id] || 0) >= 100 && s.id !== 4) {
+        s.guild = 'Captured by You';
+        s.guildColor = '#4dc9f6';
+      }
+    });
+    state.tutorialShown = false;
+    state.currentEvent = null;
+    document.getElementById('tutorial').style.display = 'none';
+    const evtEl = document.getElementById('event-indicator');
+    evtEl.classList.remove('active');
+    unlockTypesByProgress();
+    buildSelector();
+    showNotification('📂 Garden restored!');
+  } catch(e) {
+    showNotification('⚠️ Corrupted save data');
+  }
+}
+
+function resetGame() {
+  if (!confirm('Reset your entire cosmic garden? This cannot be undone.\n\nYour feedback & suggestions will be preserved.')) return;
+  localStorage.removeItem('voidgardener_save');
+  state.essence = 100;
+  state.stars = [];
+  state.particles = [];
+  state.totalEssence = 0;
+  state.starsPlanted = 0;
+  state.eventsTriggered = 0;
+  state.unlockedTypes = [true, false, false, false, false];
+  state.tutorialShown = true;
+  state.currentEvent = null;
+  document.getElementById('tutorial').style.display = '';
+  document.getElementById('event-indicator').classList.remove('active');
+  buildSelector();
+  showNotification('🔄 Garden reset — a fresh void awaits');
+}
+
+// ─── STAR PLANTING ───────────────────────────────────
+function plantStar(x, y) {
+  const type = STAR_TYPES[state.selectedStar];
+  if (state.essence < type.cost) {
+    showNotification(`⚠️ Need ${type.cost} essence (have ${Math.floor(state.essence)})`);
+    return false;
+  }
+  state.essence -= type.cost;
+  state.starsPlanted++;
+
+  const star = {
+    x, y, type: type.id, typeIdx: state.selectedStar,
+    growth: 0, maxGrowth: 100,
+    plantedAt: new Date(), pulse: Math.random() * Math.PI * 2,
+    planets: [], civLevel: 0,
+    upgradeLevel: 0,
+  };
+
+  if (type.planets) {
+    const nPlanets = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < nPlanets; i++) {
+      star.planets.push({
+        angle: Math.random() * Math.PI * 2,
+        distance: 30 + Math.random() * 50,
+        speed: 0.2 + Math.random() * 0.8,
+        size: 3 + Math.random() * 5,
+        color: ['#88ccaa','#aaaacc','#cc9988','#aaccaa','#ddcc88'][Math.floor(Math.random()*5)],
+        hasCiv: false, civSize: 0,
+      });
+    }
+  }
+
+  state.stars.push(star);
+
+  for (let i = 0; i < 25; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 4;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 40 + Math.random() * 40, maxLife: 80,
+      color: type.glow, size: 1.5 + Math.random() * 2.5,
+    });
+  }
+
+  unlockTypesByProgress();
+  buildSelector();
+  return true;
+}
+
+function unlockTypesByProgress() {
+  if (state.starsPlanted >= 3 && !state.unlockedTypes[1]) {
+    state.unlockedTypes[1] = true;
+    showNotification('⭐ Yellow Star unlocked! Life-bearing warmth.');
+    playSfx('unlock');
+  }
+  if (state.starsPlanted >= 8 && !state.unlockedTypes[2]) {
+    state.unlockedTypes[2] = true;
+    showNotification('💎 Blue Giant unlocked! Powerful but unstable.');
+    playSfx('unlock');
+  }
+  if (state.starsPlanted >= 18 && !state.unlockedTypes[3]) {
+    state.unlockedTypes[3] = true;
+    showNotification('💫 Neutron Star unlocked! Dense & intense power.');
+    playSfx('unlock');
+  }
+  if (state.starsPlanted >= 35 && !state.unlockedTypes[4]) {
+    state.unlockedTypes[4] = true;
+    showNotification('🌀 Quantum Star unlocked! The void bends to your will.');
+    playSfx('unlock');
+  }
+}
+
+// ─── CIVILIZATION ────────────────────────────────────
+function checkCivilizations(star) {
+  if (!star.planets) return;
+  for (let p of star.planets) {
+    if (!p.hasCiv && star.growth > 40 && Math.random() < 0.0002) {
+      p.hasCiv = true; p.civSize = 1;
+      const type = STAR_TYPES[star.typeIdx];
+      showNotification(`🌍 Civilization emerges near ${type.name}!`);
+      playSfx('civ');
+    }
+    if (p.hasCiv && p.civSize < 5 && Math.random() < 0.0001) {
+      p.civSize++;
+    }
+  }
+}
+
+// ─── RANDOM EVENTS ───────────────────────────────────
+// (see expanded checkEvents/resolveEvent below with 7 event types)
+
+// ─── UPDATE ──────────────────────────────────────────
+function update(dt) {
+  const rate = calculateRate();
+  state.essence += rate * dt;
+  state.totalEssence += rate * dt;
+
+  for (let star of state.stars) {
+    const type = STAR_TYPES[star.typeIdx];
+    star.growth += type.growth * dt * 0.5;
+    if (star.growth > star.maxGrowth) star.growth = star.maxGrowth;
+    star.pulse += dt * (1 + star.growth * 0.02);
+    if (star.planets) {
+      for (let p of star.planets) p.angle += p.speed * dt;
+    }
+    checkCivilizations(star);
+  }
+
+  for (let p of state.particles) { p.x += p.vx * dt * 60; p.y += p.vy * dt * 60; p.life -= dt * 60; }
+  state.particles = state.particles.filter(p => p.life > 0);
+
+  for (let n of state.notifications) n.life -= dt;
+  state.notifications = state.notifications.filter(n => n.life > 0);
+
+  if (state.currentEvent) {
+    state.currentEvent.timer -= dt * 60;
+    if (state.currentEvent.timer <= 0) {
+      resolveEvent(state.currentEvent);
+      state.currentEvent = null;
+      document.getElementById('event-indicator').classList.remove('active');
+    }
+  }
+
+  checkEvents();
+  checkAchievements();
+  spawnMonster();
+  updateMonsters(dt);
+  updateGalaxyInfluence();
+}
+
+function calculateRate() {
+  let rate = 0;
+  for (let star of state.stars) {
+    const type = STAR_TYPES[star.typeIdx];
+    let mult = 1;
+    mult += (star.growth / star.maxGrowth) * 2;
+    mult += star.upgradeLevel * 0.25;
+    if (star.planets) {
+      for (let p of star.planets) { if (p.hasCiv) mult += p.civSize * 0.15; }
+    }
+    if (type.quantum) mult *= 0.5 + Math.random() * 2;
+    rate += type.essence * mult;
+  }
+  if (state.currentEvent && state.currentEvent.type === 'cosmic_ray') rate *= 2;
+  if (state.currentEvent && state.currentEvent.type === 'void_storm') rate *= 0.5;
+  rate *= getVoidPassMultiplier();
+  return rate;
+}
+
+// (see expanded resolveEvent below with 7 event types)
+
+// ─── RENDER ──────────────────────────────────────────
+function drawStarfield() {
+  const seed = 42;
+  function prng(s) { const x = Math.sin(s*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+  const count = 300;
+  for (let i = 0; i < count; i++) {
+    const sx = prng(i*3+seed) * canvas.width;
+    const sy = prng(i*5+seed+1) * canvas.height;
+    const sz = 0.5 + prng(i*7+seed+2)*2;
+    const flicker = 0.5+0.5*Math.sin(Date.now()*0.001*(0.3+prng(i*11)))*prng(i*13);
+    const alpha = 0.15 + flicker*0.4;
+    ctx.fillStyle = `rgba(200,220,255,${alpha})`;
+    ctx.beginPath(); ctx.arc(sx,sy,sz,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawStars() {
+  const now = Date.now();
+  for (let star of state.stars) {
+    const type = STAR_TYPES[star.typeIdx];
+    const gr = star.growth / star.maxGrowth;
+    const size = type.size * (0.4 + gr*0.6);
+    const pulse = 1 + Math.sin(star.pulse)*0.15;
+
+    // Outer glow
+    const glowR = size*pulse*2.5;
+    const glow = ctx.createRadialGradient(star.x,star.y,size*0.3,star.x,star.y,glowR);
+    glow.addColorStop(0,type.glow); glow.addColorStop(0.3,type.glow+'88'); glow.addColorStop(0.7,type.glow+'11'); glow.addColorStop(1,'transparent');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(star.x,star.y,glowR,0,Math.PI*2); ctx.fill();
+
+    // Core
+    const core = ctx.createRadialGradient(star.x,star.y,0,star.x,star.y,size*pulse);
+    core.addColorStop(0,'#ffffff'); core.addColorStop(0.2,type.color); core.addColorStop(0.6,type.glow+'cc'); core.addColorStop(1,'transparent');
+    ctx.fillStyle = core; ctx.beginPath(); ctx.arc(star.x,star.y,size*pulse,0,Math.PI*2); ctx.fill();
+
+    // Growth ring
+    if (gr < 1) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.15+gr*0.2})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(star.x,star.y,size*pulse+4,0,gr*Math.PI*2); ctx.stroke();
+    }
+
+    // Quantum effects
+    if (type.quantum && gr > 0.3) {
+      for (let i = 0; i < 3; i++) {
+        const a = (now*0.002+i*2.1)%(Math.PI*2);
+        const d = size*1.8;
+        ctx.fillStyle = type.glow+'66';
+        ctx.beginPath(); ctx.arc(star.x+Math.cos(a)*d, star.y+Math.sin(a)*d, 3, 0,Math.PI*2); ctx.fill();
+      }
+    }
+
+    // Planets
+    if (star.planets) {
+      for (let p of star.planets) {
+        const px = star.x + Math.cos(p.angle)*p.distance;
+        const py = star.y + Math.sin(p.angle)*p.distance;
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(star.x,star.y,p.distance,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(px,py,p.size,0,Math.PI*2); ctx.fill();
+
+        // Civ lights
+        if (p.hasCiv) {
+          for (let c = 0; c < p.civSize; c++) {
+            const ca = (c/Math.max(p.civSize,1))*Math.PI*2 + (now*0.0005);
+            const cd = p.size*0.6;
+            const flicker = 0.4+0.6*Math.sin(now*0.005+c);
+            ctx.fillStyle = `rgba(255,255,180,${flicker})`;
+            ctx.beginPath(); ctx.arc(px+Math.cos(ca)*cd, py+Math.sin(ca)*cd, 0.8, 0, Math.PI*2); ctx.fill();
+          }
+        }
+      }
+    }
+  }
+}
+
+function drawParticles() {
+  for (let p of state.particles) {
+    const alpha = p.life/p.maxLife;
+    ctx.fillStyle = p.color + Math.floor(alpha*255).toString(16).padStart(2,'0');
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*alpha,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawEvent() {
+  if (!state.currentEvent) return;
+  const e = state.currentEvent;
+  if (e.type === 'blackhole') {
+    const progress = 1-(e.timer/e.duration);
+    const radius = 20 + progress*30;
+    const alpha = 0.3 + progress*0.5;
+    const bh = ctx.createRadialGradient(e.x,e.y,radius*0.1,e.x,e.y,radius);
+    bh.addColorStop(0,'#000000'); bh.addColorStop(0.4,`rgba(80,0,80,${alpha})`); bh.addColorStop(0.7,`rgba(40,0,60,${alpha*0.5})`); bh.addColorStop(1,'transparent');
+    ctx.fillStyle = bh; ctx.beginPath(); ctx.arc(e.x,e.y,radius,0,Math.PI*2); ctx.fill();
+    const now = Date.now();
+    for (let i = 0; i < 12; i++) {
+      const a = (now*0.003+i*0.52)%(Math.PI*2);
+      const d = radius*(0.5+0.5*Math.sin(now*0.01+i));
+      ctx.fillStyle = `rgba(255,100,50,${alpha})`;
+      ctx.beginPath(); ctx.arc(e.x+Math.cos(a)*d, e.y+Math.sin(a)*d, 2, 0,Math.PI*2); ctx.fill();
+    }
+  } else if (e.type === 'cosmic_ray') {
+    const now = Date.now();
+    for (let i = 0; i < 3; i++) {
+      const sx = (Math.sin(now*0.002+i)*0.5+0.5)*canvas.width;
+      ctx.strokeStyle = `rgba(150,200,255,${0.3+Math.random()*0.3})`;
+      ctx.lineWidth = 1+Math.random(); ctx.beginPath(); ctx.moveTo(sx,-10);
+      let cx = sx;
+      for (let y = 0; y < canvas.height; y += 20+Math.random()*30) { cx += (Math.random()-0.5)*60; ctx.lineTo(cx,y); }
+      ctx.stroke();
+    }
+  } else if (e.type === 'nebula') {
+    const colors = ['#ff66aa22','#66aaff22','#aa66ff22','#ffaa6622'];
+    for (let i = 0; i < 4; i++) {
+      const nx = canvas.width*(0.2+(i*0.2));
+      const ny = canvas.height*0.5+Math.sin(Date.now()*0.001+i)*100;
+      const nr = 80+Math.sin(Date.now()*0.002+i)*30;
+      const ng = ctx.createRadialGradient(nx,ny,0,nx,ny,nr);
+      ng.addColorStop(0,colors[i]); ng.addColorStop(1,'transparent');
+      ctx.fillStyle = ng; ctx.beginPath(); ctx.arc(nx,ny,nr,0,Math.PI*2); ctx.fill();
+    }
+  } else if (e.type === 'meteor') {
+    const now = Date.now();
+    for (let i = 0; i < 8; i++) {
+      const mx = ((now * 0.3 + i * 400) % (canvas.width + 400)) - 200;
+      const my = ((now * 0.15 + i * 250 + 100) % (canvas.height + 200)) - 100;
+      ctx.fillStyle = 'rgba(255,200,100,0.7)';
+      ctx.beginPath(); ctx.arc(mx, my, 1.5, 0, Math.PI*2); ctx.fill();
+      // Trail
+      ctx.strokeStyle = 'rgba(255,150,50,0.2)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx - 8, my - 3); ctx.stroke();
+    }
+  } else if (e.type === 'void_storm') {
+    const now = Date.now();
+    ctx.strokeStyle = 'rgba(100,50,150,0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      let x = ((now * 0.5 + i * 200) % 800) - 200;
+      for (let y = 0; y < canvas.height + 50; y += 15) {
+        x += Math.sin(y * 0.02 + now * 0.003) * 20;
+        if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (e.type === 'alien_signal') {
+    const now = Date.now();
+    const cx = canvas.width/2, cy = canvas.height/2;
+    const rings = 3;
+    for (let i = 0; i < rings; i++) {
+      const r = ((now * 0.1 + i * 60) % 150);
+      ctx.strokeStyle = `rgba(100,255,200,${0.3 - r/500})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(100,255,200,0.6)';
+    ctx.beginPath(); ctx.arc(cx, cy, 4 + Math.sin(now*0.01)*2, 0, Math.PI*2); ctx.fill();
+  } else if (e.type === 'rogue_planet') {
+    const now = Date.now();
+    const px = canvas.width/2 + Math.sin(now*0.002)*300;
+    const py = canvas.height/2 + Math.cos(now*0.0015)*200;
+    const grad = ctx.createRadialGradient(px,py,0,px,py,25);
+    grad.addColorStop(0,'#ddaa88'); grad.addColorStop(0.5,'#996644'); grad.addColorStop(1,'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(px, py, 25, 0, Math.PI*2); ctx.fill();
+    // Ring
+    ctx.strokeStyle = 'rgba(200,150,100,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(px, py, 35, 8, 0.3, 0, Math.PI*2); ctx.stroke();
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#020412'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const bgGrad = ctx.createRadialGradient(canvas.width/2,canvas.height/2,0,canvas.width/2,canvas.height/2,canvas.width*0.7);
+  bgGrad.addColorStop(0,'rgba(20,10,40,0.3)'); bgGrad.addColorStop(1,'transparent');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Draw starfield in screen space (doesn't zoom)
+  drawStarfield();
+
+  // Apply camera transform for game objects
+  applyCamera();
+  drawEvent();
+  drawParticles();
+  drawStars();
+  drawMonsters();
+  restoreCamera();
+
+  // Draw minimap in screen space
+  drawGalaxyMinimap();
+
+  updateUI();
+  requestAnimationFrame(render);
+}
+
+// ─── UI ──────────────────────────────────────────────
+function updateUI() {
+  document.getElementById('essence-value').textContent = Math.floor(state.essence).toLocaleString();
+  document.getElementById('essence-rate').textContent = `+${calculateRate().toFixed(1)}/s`;
+  document.getElementById('star-count').textContent = `Stars: ${state.stars.length}`;
+  const evtEl = document.getElementById('event-indicator');
+  if (state.currentEvent) {
+    const map = { blackhole:'🕳️ Black Hole!', cosmic_ray:'⚡ Cosmic Rays!', nebula:'🌸 Nebula Bloom!', meteor:'☄️ Meteor Shower!', void_storm:'🌪️ Void Storm!', alien_signal:'📡 Alien Signal!', rogue_planet:'🪐 Rogue Planet!' };
+    evtEl.textContent = map[state.currentEvent.type] || state.currentEvent.type;
+    evtEl.classList.add('active');
+  } else { evtEl.classList.remove('active'); }
+}
+
+function showNotification(msg) {
+  state.notifications.push({ msg, life: 2.5 });
+  const el = document.getElementById('notification');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+function buildSelector() {
+  const container = document.getElementById('star-selector');
+  container.innerHTML = '';
+  STAR_TYPES.forEach((type, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'star-btn';
+    if (idx === state.selectedStar) btn.classList.add('selected');
+    if (!state.unlockedTypes[idx]) btn.classList.add('locked');
+    btn.innerHTML = `<span class="icon">${type.icon}</span><span class="name">${type.name}</span><span class="cost">${type.cost} ✦</span>`;
+    btn.addEventListener('click', () => {
+      if (!state.unlockedTypes[idx]) { showNotification(`🔒 Plant more stars to unlock ${type.name}`); return; }
+      state.selectedStar = idx; buildSelector();
+    });
+    container.appendChild(btn);
+  });
+}
+
+// ─── INPUT ───────────────────────────────────────────
+canvas.addEventListener('click', (e) => {
+  if (state.tutorialShown || activePanel || isPanning) return;
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+
+  // Check for monster click first
+  const worldMon = screenToWorld(sx, sy);
+  for (let i = state.monsters.length - 1; i >= 0; i--) {
+    const m = state.monsters[i];
+    const mtype = MONSTER_TYPES[m.typeIdx];
+    if (Math.hypot(worldMon.x - m.x, worldMon.y - m.y) < mtype.size + 10) {
+      attackMonster(i, e.clientX, e.clientY);
+      return;
+    }
+  }
+
+  // Check for star tooltip
+  const star = findStarAt(sx, sy);
+  if (star) {
+    showTooltip(star, e.clientX, e.clientY);
+    playSfx('civ');
+    return;
+  }
+  hideTooltip();
+
+  // Plant star at world position
+  const world = screenToWorld(sx, sy);
+  if (plantStar(world.x, world.y)) playSfx('plant');
+});
+
+canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); hideTooltip(); });
+
+canvas.addEventListener('touchstart', (e) => {
+  if (state.tutorialShown || activePanel) return;
+  if (e.touches.length > 1) return; // pinch zoom
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.touches[0].clientX - rect.left;
+  const sy = e.touches[0].clientY - rect.top;
+
+  const star = findStarAt(sx, sy);
+  if (star) {
+    showTooltip(star, e.touches[0].clientX, e.touches[0].clientY);
+    return;
+  }
+  hideTooltip();
+
+  const world = screenToWorld(sx, sy);
+  if (plantStar(world.x, world.y)) playSfx('plant');
+}, {passive: false});
+
+// ─── BUTTONS ─────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', saveGame);
+document.getElementById('btn-load').addEventListener('click', loadGame);
+document.getElementById('btn-reset').addEventListener('click', resetGame);
+document.getElementById('btn-roadmap').addEventListener('click', () => openPanel('roadmap'));
+document.getElementById('btn-suggestions').addEventListener('click', () => openPanel('suggestions'));
+document.getElementById('btn-audio').addEventListener('click', toggleAudio);
+document.getElementById('btn-galaxy').addEventListener('click', toggleGalaxyMap);
+document.getElementById('btn-shop').addEventListener('click', toggleShop);
+document.getElementById('btn-zoom-in').addEventListener('click', () => { camera.targetZoom = Math.min(3, camera.targetZoom * 1.3); });
+document.getElementById('btn-zoom-out').addEventListener('click', () => { camera.targetZoom = Math.max(0.3, camera.targetZoom / 1.3); });
+document.getElementById('btn-zoom-reset').addEventListener('click', resetCamera);
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  state.tutorialShown = false;
+  document.getElementById('tutorial').style.display = 'none';
+  buildSelector();
+});
+
+document.getElementById('sug-text').addEventListener('input', updateCharCount);
+document.getElementById('btn-submit-suggestion').addEventListener('click', submitSuggestion);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (activePanel && e.key === 'Escape') { closePanel(); return; }
+  if (state.tutorialShown) return;
+  const num = parseInt(e.key);
+  if (num >= 1 && num <= STAR_TYPES.length && state.unlockedTypes[num-1]) {
+    state.selectedStar = num - 1; buildSelector();
+  }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveGame(); }
+  if (e.key === 'r' && !e.ctrlKey && !e.metaKey) { openPanel('roadmap'); }
+  if (e.key === 'f' && !e.ctrlKey && !e.metaKey) { openPanel('suggestions'); }
+  if (e.key === 'm' && !e.ctrlKey && !e.metaKey) { toggleAudio(); }
+  if (e.key === 'g' && !e.ctrlKey && !e.metaKey) { toggleGalaxyMap(); }
+  if (e.key === 'p' && !e.ctrlKey && !e.metaKey) { toggleShop(); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// AUDIO SYSTEM — Web Audio API ambient + SFX
+// ═══════════════════════════════════════════════════════════
+let audioCtx = null;
+let audioOn = false;
+let ambientNodes = {};
+
+function initAudio() {
+  if (audioCtx) return;
+  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
+
+function startAmbient() {
+  if (!audioCtx) initAudio();
+  if (!audioCtx || ambientNodes.masterGain) return;
+  const ctx = audioCtx;
+  const master = ctx.createGain();
+  master.gain.value = 0.08;
+  master.connect(ctx.destination);
+  ambientNodes.masterGain = master;
+
+  const drone = ctx.createOscillator();
+  drone.type = 'sine'; drone.frequency.value = 55;
+  const droneGain = ctx.createGain(); droneGain.gain.value = 0.3;
+  drone.connect(droneGain); droneGain.connect(master);
+
+  const harm = ctx.createOscillator();
+  harm.type = 'sine'; harm.frequency.value = 82.5;
+  const harmGain = ctx.createGain(); harmGain.gain.value = 0.15;
+  harm.connect(harmGain); harmGain.connect(master);
+
+  const lfo = ctx.createOscillator();
+  lfo.type = 'sine'; lfo.frequency.value = 0.08;
+  const lfoGain = ctx.createGain(); lfoGain.gain.value = 8;
+  lfo.connect(lfoGain); lfoGain.connect(drone.frequency);
+
+  drone.start(); harm.start(); lfo.start();
+  ambientNodes = { masterGain: master, drone, harm, lfo };
+}
+
+function stopAmbient() {
+  if (ambientNodes.drone) { try { ambientNodes.drone.stop(); } catch(e){} }
+  if (ambientNodes.harm) { try { ambientNodes.harm.stop(); } catch(e){} }
+  if (ambientNodes.lfo) { try { ambientNodes.lfo.stop(); } catch(e){} }
+  ambientNodes = {};
+}
+
+function playSfx(type) {
+  if (!audioOn || !audioCtx) return;
+  const ctx = audioCtx, now = ctx.currentTime;
+  if (type === 'plant') {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(600, now);
+    o.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+    o.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    o.start(now); o.stop(now + 0.25);
+  } else if (type === 'unlock') {
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination);
+    [523, 659, 784, 1047].forEach((f, i) => o.frequency.setValueAtTime(f, now + i * 0.1));
+    g.gain.setValueAtTime(0.1, now);
+    g.gain.setValueAtTime(0.1, now + 0.35);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    o.start(now); o.stop(now + 0.5);
+  } else if (type === 'event') {
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400;
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(200, now);
+    o.frequency.linearRampToValueAtTime(80, now + 1.5);
+    g.gain.setValueAtTime(0.06, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+    o.start(now); o.stop(now + 1.5);
+  } else if (type === 'civ') {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(880, now);
+    o.frequency.setValueAtTime(1100, now + 0.15);
+    g.gain.setValueAtTime(0.08, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    o.start(now); o.stop(now + 0.4);
+  }
+}
+
+function toggleAudio() {
+  initAudio();
+  if (!audioCtx) { showNotification('🔇 Audio not supported'); return; }
+  audioOn = !audioOn;
+  const btn = document.getElementById('btn-audio');
+  if (audioOn) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    startAmbient();
+    btn.textContent = '🔊 Audio On'; btn.classList.add('audio-on');
+  } else {
+    stopAmbient();
+    btn.textContent = '🔇 Audio Off'; btn.classList.remove('audio-on');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CAMERA — Zoom & Pan
+// ═══════════════════════════════════════════════════════════
+let camera = { x: 0, y: 0, zoom: 1, targetZoom: 1, targetX: 0, targetY: 0 };
+let isPanning = false, panStart = { x: 0, y: 0 }, camStart = { x: 0, y: 0 };
+let lastPinchDist = 0;
+
+function screenToWorld(sx, sy) {
+  return { x: (sx - canvas.width/2) / camera.zoom - camera.x, y: (sy - canvas.height/2) / camera.zoom - camera.y };
+}
+
+function zoomAt(sx, sy, factor) {
+  const world = screenToWorld(sx, sy);
+  camera.targetZoom = Math.max(0.3, Math.min(3, camera.targetZoom * factor));
+  const nw = screenToWorld(sx, sy);
+  camera.targetX += world.x - nw.x;
+  camera.targetY += world.y - nw.y;
+}
+
+canvas.addEventListener('wheel', (e) => {
+  if (state.tutorialShown || activePanel) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  zoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1.15 : 0.87);
+}, { passive: false });
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    e.preventDefault();
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: camera.targetX, y: camera.targetY };
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  camera.targetX = camStart.x - (e.clientX - panStart.x) / camera.zoom;
+  camera.targetY = camStart.y - (e.clientY - panStart.y) / camera.zoom;
+});
+
+window.addEventListener('mouseup', () => { isPanning = false; canvas.style.cursor = 'crosshair'; });
+
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (lastPinchDist > 0) {
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2, cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = canvas.getBoundingClientRect();
+      zoomAt(cx - rect.left, cy - rect.top, dist / lastPinchDist);
+    }
+    lastPinchDist = dist;
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchend', () => { lastPinchDist = 0; });
+
+function resetCamera() { camera.targetZoom = 1; camera.targetX = 0; camera.targetY = 0; }
+
+function updateCamera(dt) {
+  const s = 0.08;
+  camera.zoom += (camera.targetZoom - camera.zoom) * s;
+  camera.x += (camera.targetX - camera.x) * s;
+  camera.y += (camera.targetY - camera.y) * s;
+}
+
+function applyCamera() {
+  ctx.save();
+  ctx.translate(canvas.width/2, canvas.height/2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(camera.x, camera.y);
+}
+
+function restoreCamera() { ctx.restore(); }
+
+// ═══════════════════════════════════════════════════════════
+// MONSTER SYSTEM — Void creatures that threaten your garden
+// ═══════════════════════════════════════════════════════════
+function spawnMonster() {
+  if (!state.stars.length) return;
+  if (state.monsters.length >= 5) return;
+  const roll = Math.random();
+  if (roll > 0.001) return;
+
+  // Difficulty scales with stars planted
+  let tier = 0;
+  if (state.starsPlanted > 40) tier = 4;
+  else if (state.starsPlanted > 25) tier = 3;
+  else if (state.starsPlanted > 12) tier = 2;
+  else if (state.starsPlanted > 5) tier = 1;
+
+  // Randomly pick tier with weighted chance toward lower tiers
+  const tierRoll = Math.random();
+  if (tierRoll < 0.5 && tier > 0) tier = Math.max(0, tier - 1);
+
+  const type = MONSTER_TYPES[tier];
+  // Spawn at edge of screen
+  const edge = Math.floor(Math.random() * 4);
+  let mx, my;
+  const margin = 60;
+  if (edge === 0) { mx = margin; my = Math.random() * canvas.height; }
+  else if (edge === 1) { mx = canvas.width - margin; my = Math.random() * canvas.height; }
+  else if (edge === 2) { mx = Math.random() * canvas.width; my = margin; }
+  else { mx = Math.random() * canvas.width; my = canvas.height - margin; }
+
+  state.monsters.push({
+    x: mx, y: my,
+    typeIdx: tier,
+    hp: type.hp,
+    maxHp: type.hp,
+    targetStar: null,
+    pulse: Math.random() * Math.PI * 2,
+    stunned: 0,
+  });
+  showNotification(`👾 A ${type.name} emerges from the void! Click it to fight!`);
+  playSfx('event');
+}
+
+function updateMonsters(dt) {
+  for (let m of state.monsters) {
+    m.pulse += dt * 3;
+    if (m.stunned > 0) { m.stunned -= dt; continue; }
+
+    // Find nearest star
+    let nearest = null, nearestDist = Infinity;
+    for (let s of state.stars) {
+      const d = Math.hypot(m.x - s.x, m.y - s.y);
+      if (d < nearestDist) { nearestDist = d; nearest = s; }
+    }
+    m.targetStar = nearest;
+
+    if (nearest) {
+      const type = MONSTER_TYPES[m.typeIdx];
+      const dx = nearest.x - m.x;
+      const dy = nearest.y - m.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 20) {
+        // Attack star
+        nearest.growth = Math.max(0, nearest.growth - type.damage * dt * 5);
+        if (nearest.growth <= 0) {
+          const idx = state.stars.indexOf(nearest);
+          if (idx >= 0) {
+            const stype = STAR_TYPES[nearest.typeIdx];
+            state.stars.splice(idx, 1);
+            showNotification(`💀 ${stype.name} destroyed by ${type.name}!`);
+          }
+        }
+      } else {
+        // Move toward star
+        m.x += (dx / dist) * type.speed * dt * 60;
+        m.y += (dy / dist) * type.speed * dt * 60;
+      }
+    }
+  }
+}
+
+function attackMonster(monsterIdx, sx, sy) {
+  const m = state.monsters[monsterIdx];
+  if (!m) return;
+  const type = MONSTER_TYPES[m.typeIdx];
+
+  // Cost essence to fight
+  const cost = Math.ceil(type.hp * 5);
+  if (state.essence < cost) {
+    showNotification(`⚠️ Need ${cost} essence to fight ${type.name}`);
+    return;
+  }
+  state.essence -= cost;
+  m.hp--;
+  m.stunned = 0.3;
+
+  // Hit particles
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    state.particles.push({
+      x: m.x, y: m.y,
+      vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+      life: 15, maxLife: 15,
+      color: '#ffffff', size: 2,
+    });
+  }
+
+  if (m.hp <= 0) {
+    // Kill monster
+    state.monsterKills++;
+    state.essence += type.essence;
+    showNotification(`⚔️ ${type.name} defeated! +${type.essence} essence`);
+
+    // Death particles
+    for (let i = 0; i < 25; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 5;
+      state.particles.push({
+        x: m.x, y: m.y,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        life: 30 + Math.random() * 20, maxLife: 50,
+        color: type.color, size: 1 + Math.random() * 3,
+      });
+    }
+    state.monsters.splice(monsterIdx, 1);
+    playSfx('unlock');
+    checkAchievements();
+    return true;
+  }
+  return false;
+}
+
+function drawMonsters() {
+  const now = Date.now();
+  for (let m of state.monsters) {
+    const type = MONSTER_TYPES[m.typeIdx];
+    const wobble = Math.sin(m.pulse) * 3;
+    const hpRatio = m.hp / m.maxHp;
+
+    // Shadow/aura
+    ctx.fillStyle = type.color + '33';
+    ctx.beginPath();
+    ctx.arc(m.x, m.y + wobble, type.size * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    const grad = ctx.createRadialGradient(m.x, m.y + wobble, 0, m.x, m.y + wobble, type.size);
+    grad.addColorStop(0, type.color);
+    grad.addColorStop(0.6, type.color + '88');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y + wobble, type.size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(m.x - type.size * 0.3, m.y + wobble - type.size * 0.2, type.size * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(m.x + type.size * 0.3, m.y + wobble - type.size * 0.2, type.size * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // HP bar
+    if (hpRatio < 1) {
+      const barW = type.size * 2;
+      const barH = 3;
+      const barX = m.x - barW / 2;
+      const barY = m.y + wobble - type.size - 8;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = '#ff4444';
+      ctx.fillRect(barX, barY, barW * hpRatio, barH);
+    }
+
+    // Name label
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(type.name, m.x, m.y + wobble + type.size + 14);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// GALAXY MAP — Multi-sector world with guilds
+// ═══════════════════════════════════════════════════════════
+function toggleGalaxyMap() {
+  const overlay = document.getElementById('galaxy-overlay');
+  if (overlay.classList.contains('show')) {
+    overlay.classList.remove('show');
+  } else {
+    renderGalaxyMap();
+    overlay.classList.add('show');
+  }
+}
+
+function renderGalaxyMap() {
+  const container = document.getElementById('galaxy-map');
+  container.innerHTML = '';
+  state.galaxy.sectors.forEach(sector => {
+    const unlocked = state.galaxy.unlocked.includes(sector.id);
+    const selected = sector.id === state.galaxy.selectedSector;
+    const influence = state.galaxy.influence[sector.id] || 0;
+    const influencePct = Math.min(100, Math.floor(influence / 50 * 100));
+
+    const div = document.createElement('div');
+    div.className = 'galaxy-sector';
+    if (!unlocked) div.classList.add('locked');
+    if (selected) div.classList.add('selected');
+    div.style.borderColor = sector.guildColor + '44';
+    div.style.background = `linear-gradient(135deg, rgba(10,14,30,.8), ${sector.guildColor}15)`;
+
+    div.innerHTML = `
+      <div style="font-size:24px">${unlocked ? '🌌' : '🔒'}</div>
+      <div class="gs-name">${sector.name}</div>
+      <div class="gs-guild" style="color:${sector.guildColor}">${sector.guild}</div>
+      <div class="gs-influence" style="color:${influencePct > 50 ? '#4dc9f6' : '#8090cc'}">${unlocked ? 'Influence: ' + influencePct + '%' : sector.unlockCost + ' ✦'}</div>
+    `;
+
+    div.addEventListener('click', () => {
+      if (!unlocked) {
+        if (state.essence >= sector.unlockCost) {
+          state.essence -= sector.unlockCost;
+          state.galaxy.unlocked.push(sector.id);
+          showNotification(`🗺️ ${sector.name} unlocked! The ${sector.guild} awaits.`);
+          playSfx('unlock');
+          renderGalaxyMap();
+        } else {
+          showNotification(`🔒 Need ${sector.unlockCost} essence to unlock ${sector.name}`);
+        }
+        return;
+      }
+      state.galaxy.selectedSector = sector.id;
+      renderGalaxyMap();
+      document.getElementById('galaxy-overlay').classList.remove('show');
+      showNotification(`📍 Traveled to ${sector.name}`);
+    });
+
+    container.appendChild(div);
+  });
+}
+
+// Update galaxy influence based on stars
+function updateGalaxyInfluence() {
+  const sector = state.galaxy.selectedSector;
+  if (state.stars.length > 0) {
+    state.galaxy.influence[sector] = Math.min(100, (state.galaxy.influence[sector] || 0) + 0.002);
+    // Check sector capture
+    if (state.galaxy.influence[sector] >= 100) {
+      const secData = state.galaxy.sectors[sector];
+      if (secData && secData.guild !== 'None (Your Home)') {
+        showNotification(`🏆 ${secData.name} captured from the ${secData.guild}!`);
+        secData.guild = 'Captured by You';
+        secData.guildColor = '#4dc9f6';
+        playSfx('unlock');
+        checkAchievements();
+      }
+    }
+  }
+}
+
+function drawGalaxyMinimap() {
+  const mmSize = 60, mmX = 8, mmY = 100;
+  const sector = state.galaxy.selectedSector;
+  const secData = state.galaxy.sectors[sector];
+  if (!secData) return;
+
+  // Background
+  ctx.fillStyle = 'rgba(4,8,24,.7)';
+  ctx.strokeStyle = 'rgba(120,140,255,.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(mmX, mmY, mmSize, mmSize, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Sector name
+  ctx.fillStyle = secData.guildColor;
+  ctx.font = 'bold 9px Segoe UI, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(secData.name, mmX + mmSize/2, mmY + 22);
+
+  // Influence bar
+  const inf = state.galaxy.influence[sector] || 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  ctx.fillRect(mmX + 6, mmY + 30, mmSize - 12, 4);
+  ctx.fillStyle = inf >= 100 ? '#ffd166' : '#4dc9f6';
+  ctx.fillRect(mmX + 6, mmY + 30, (mmSize - 12) * (inf / 100), 4);
+
+  // Influence text
+  ctx.fillStyle = '#8090cc';
+  ctx.font = '8px Segoe UI, sans-serif';
+  ctx.fillText(Math.floor(inf) + '%', mmX + mmSize/2, mmY + 46);
+
+  // Unlocked count
+  ctx.fillText(state.galaxy.unlocked.length + '/9 sectors', mmX + mmSize/2, mmY + 56);
+}
+
+// ═══════════════════════════════════════════════════════════
+// STAR UPGRADING
+// ═══════════════════════════════════════════════════════════
+function getUpgradeCost(star) {
+  const type = STAR_TYPES[star.typeIdx];
+  return Math.floor(type.cost * 0.5 * (star.upgradeLevel + 1));
+}
+
+function upgradeStar(star) {
+  const cost = getUpgradeCost(star);
+  if (state.essence < cost) {
+    showNotification(`⚠️ Need ${cost} essence to upgrade (have ${Math.floor(state.essence)})`);
+    return false;
+  }
+  state.essence -= cost;
+  star.upgradeLevel++;
+  const type = STAR_TYPES[star.typeIdx];
+  // Spawn upgrade particles
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 3;
+    state.particles.push({
+      x: star.x, y: star.y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      life: 30 + Math.random() * 20, maxLife: 50,
+      color: '#ffdd44', size: 1 + Math.random() * 2,
+    });
+  }
+  showNotification(`⬆️ ${type.name} upgraded to level ${star.upgradeLevel}! +${(star.upgradeLevel * 25)}% output`);
+  playSfx('unlock');
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACHIEVEMENT SYSTEM
+// ═══════════════════════════════════════════════════════════
+const ACHIEVEMENTS = [
+  { id:'first_star', name:'First Light', desc:'Plant your first star', icon:'⭐', check:()=>state.starsPlanted>=1 },
+  { id:'garden_5', name:'Star Cluster', desc:'Plant 5 stars', icon:'🌟', check:()=>state.starsPlanted>=5 },
+  { id:'garden_15', name:'Nebula Garden', desc:'Plant 15 stars', icon:'🌌', check:()=>state.starsPlanted>=15 },
+  { id:'garden_30', name:'Galaxy Architect', desc:'Plant 30 stars', icon:'🌠', check:()=>state.starsPlanted>=30 },
+  { id:'garden_50', name:'Cosmic Empire', desc:'Plant 50 stars', icon:'👑', check:()=>state.starsPlanted>=50 },
+  { id:'first_civ', name:'First Contact', desc:'A civilization emerges in your garden', icon:'🌍', check:()=>state.stars.some(s=>s.planets&&s.planets.some(p=>p.hasCiv)) },
+  { id:'survivor', name:'Black Hole Survivor', desc:'Survive your first black hole event', icon:'🕳️', check:()=>state.eventsTriggered>=1 },
+  { id:'rich', name:'Essence Hoarder', desc:'Accumulate 5,000 essence', icon:'💎', check:()=>state.totalEssence>=5000 },
+  { id:'quantum_master', name:'Quantum Gardener', desc:'Unlock the Quantum Star', icon:'🌀', check:()=>state.unlockedTypes[4] },
+  { id:'veteran', name:'Void Veteran', desc:'Trigger 10 cosmic events', icon:'⚡', check:()=>state.eventsTriggered>=10 },
+  { id:'upgrader', name:'Star Forge', desc:'Upgrade a star to level 3', icon:'🔧', check:()=>state.stars.some(s=>s.upgradeLevel>=3) },
+  { id:'collector', name:'Cosmic Collector', desc:'Own one of every star type', icon:'🏆', check:()=>{
+    const types = new Set(state.stars.map(s=>s.typeIdx));
+    return types.size >= 5 && state.unlockedTypes[4];
+  }},
+  { id:'monster_slayer', name:'Void Hunter', desc:'Defeat your first void creature', icon:'⚔️', check:()=>state.monsterKills>=1 },
+  { id:'monster_veteran', name:'Monster Slayer', desc:'Defeat 10 void creatures', icon:'🗡️', check:()=>state.monsterKills>=10 },
+  { id:'monster_lord', name:'Entropy Bane', desc:'Defeat an Entropy Lord', icon:'💀', check:()=>state.monsterKills>=1 && state.starsPlanted>=40 },
+  { id:'sector_unlock', name:'Frontier Explorer', desc:'Unlock a new sector', icon:'🗺️', check:()=>state.galaxy.unlocked.length>=2 },
+  { id:'sector_capture', name:'Guild Breaker', desc:'Capture a sector from its guild', icon:'🏴', check:()=>state.galaxy.sectors.some(s=>s.guild==='Captured by You'&&s.id!==4) },
+  { id:'galaxy_lord', name:'Galaxy Lord', desc:'Capture 5 sectors', icon:'👑', check:()=>state.galaxy.sectors.filter(s=>s.guild==='Captured by You').length>=5 },
+];
+
+if (!state.achievements) state.achievements = {};
+function checkAchievements() {
+  let earned = false;
+  ACHIEVEMENTS.forEach(a => {
+    if (!state.achievements[a.id] && a.check()) {
+      state.achievements[a.id] = Date.now();
+      showAchievement(a);
+      earned = true;
+    }
+  });
+  return earned;
+}
+
+function showAchievement(a) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(4,8,24,.95);backdrop-filter:blur(12px);border:2px solid #ffd166;border-radius:14px;padding:14px 24px;z-index:50;display:flex;align-items:center;gap:12px;animation:achSlide .4s ease;pointer-events:none;font-family:inherit`;
+  el.innerHTML = `<span style="font-size:28px">${a.icon}</span><div><div style="color:#ffd166;font-size:11px;letter-spacing:1px;text-transform:uppercase">Achievement Unlocked!</div><div style="color:#fff;font-size:15px;font-weight:700">${a.name}</div><div style="color:#8090cc;font-size:11px">${a.desc}</div></div>`;
+
+  // Inject animation if not exists
+  if (!document.getElementById('ach-style')) {
+    const s = document.createElement('style');
+    s.id = 'ach-style';
+    s.textContent = '@keyframes achSlide{from{opacity:0;transform:translateX(-50%) translateY(-30px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .5s'; }, 3000);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MORE COSMIC EVENTS
+// ═══════════════════════════════════════════════════════════
+function checkEvents() {
+  if (state.currentEvent) return;
+  if (state.stars.length === 0) return;
+
+  const roll = Math.random();
+  if (roll < 0.002 && state.stars.length > 3) {
+    const victim = state.stars[Math.floor(Math.random() * state.stars.length)];
+    state.currentEvent = { type:'blackhole', x:victim.x, y:victim.y, timer:120, duration:120, target:victim, msg:'🕳️ A black hole tears through your garden!' };
+  } else if (roll < 0.005) {
+    state.currentEvent = { type:'cosmic_ray', timer:60, duration:60, msg:'⚡ Cosmic ray burst! Double essence for 3 seconds.' };
+  } else if (roll < 0.008) {
+    state.currentEvent = { type:'nebula', timer:90, duration:90, msg:'🌸 A nebula blooms — bonus essence incoming!' };
+  } else if (roll < 0.011 && state.stars.length >= 2) {
+    // Meteor shower — bonus essence rain on random stars
+    state.currentEvent = { type:'meteor', timer:80, duration:80, msg:'☄️ Meteor shower! Stars gain bonus essence.' };
+  } else if (roll < 0.014 && state.stars.length >= 3) {
+    // Void storm — temporary rate reduction
+    state.currentEvent = { type:'void_storm', timer:100, duration:100, msg:'🌪️ Void storm approaching! Essence generation halved.' };
+  } else if (roll < 0.016) {
+    // Alien signal — one-time bonus
+    state.currentEvent = { type:'alien_signal', timer:70, duration:70, msg:'📡 Alien signal detected! Decoding transmission...' };
+  } else if (roll < 0.018 && state.stars.length >= 5) {
+    // Rogue planet — bonus essence if you have enough stars
+    state.currentEvent = { type:'rogue_planet', timer:85, duration:85, msg:'🪐 A rogue planet wanders through your garden!' };
+  }
+
+  if (state.currentEvent) {
+    showNotification(state.currentEvent.msg);
+    state.eventsTriggered++;
+    playSfx('event');
+  }
+}
+
+function resolveEvent(event) {
+  if (event.type === 'blackhole') {
+    const idx = state.stars.indexOf(event.target);
+    if (idx >= 0) {
+      const type = STAR_TYPES[event.target.typeIdx];
+      for (let i = 0; i < 40; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 5;
+        state.particles.push({ x:event.target.x, y:event.target.y, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, life:60+Math.random()*30, maxLife:90, color:'#ff4444', size:2+Math.random()*3 });
+      }
+      state.stars.splice(idx, 1);
+      showNotification(`💥 A ${type.name} was consumed by the black hole!`);
+    }
+  } else if (event.type === 'nebula') {
+    state.essence += 200;
+    showNotification('🌸 +200 essence from the nebula bloom!');
+  } else if (event.type === 'meteor') {
+    state.essence += 100;
+    showNotification('☄️ +100 essence from the meteor shower!');
+  } else if (event.type === 'void_storm') {
+    showNotification('🌪️ Void storm passed. Your garden survived.');
+  } else if (event.type === 'alien_signal') {
+    const bonus = 150 + Math.floor(Math.random() * 200);
+    state.essence += bonus;
+    showNotification(`📡 Alien transmission decoded! +${bonus} essence received.`);
+  } else if (event.type === 'rogue_planet') {
+    state.essence += 120;
+    showNotification('🪐 The rogue planet deposited +120 essence as it passed through.');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// STAR TOOLTIPS (with upgrade button)
+// ═══════════════════════════════════════════════════════════
+let tooltipStar = null;
+
+function showTooltip(star, sx, sy) {
+  tooltipStar = star;
+  const type = STAR_TYPES[star.typeIdx];
+  const gr = star.growth / star.maxGrowth;
+  let civs = 0;
+  if (star.planets) civs = star.planets.filter(p => p.hasCiv).length;
+  const rate = calculateStarRate(star);
+  const upCost = getUpgradeCost(star);
+  const el = document.getElementById('star-tooltip');
+  el.innerHTML = `<div class="tt-name">${type.icon} ${type.name} ${star.upgradeLevel > 0 ? '<span style="color:#ffd166;font-size:11px">Lv.'+star.upgradeLevel+'</span>' : ''}</div>
+    <div class="tt-bar"><div class="tt-bar-fill" style="width:${Math.floor(gr*100)}%"></div></div>
+    <div class="tt-stat"><span>Growth</span><span>${Math.floor(gr*100)}%</span></div>
+    <div class="tt-stat"><span>Essence</span><span>+${rate.toFixed(1)}/s</span></div>
+    <div class="tt-stat"><span>Planets</span><span>${star.planets ? star.planets.length : 0}</span></div>
+    <div class="tt-stat"><span>Civilizations</span><span>${civs}</span></div>
+    <div class="tt-stat"><span style="opacity:.7">${type.desc}</span></div>
+    <button onclick="upgradeStar(window._tooltipStar)" style="margin-top:10px;width:100%;background:linear-gradient(135deg,#7b2ff7,#4dc9f6);border:none;color:#fff;padding:7px;border-radius:8px;font-weight:600;font-size:11px;cursor:pointer;">⬆️ Upgrade — ${upCost} ✦</button>`;
+  el.style.left = Math.min(sx + 10, window.innerWidth - 260) + 'px';
+  el.style.top = Math.max(sy - 10, 60) + 'px';
+  el.classList.add('show');
+  window._tooltipStar = star;
+  // Make tooltip clickable
+  el.style.pointerEvents = 'auto';
+}
+
+function hideTooltip() {
+  tooltipStar = null;
+  const el = document.getElementById('star-tooltip');
+  el.classList.remove('show');
+  el.style.pointerEvents = 'none';
+}
+
+function calculateStarRate(star) {
+  const type = STAR_TYPES[star.typeIdx]; let mult = 1;
+  mult += (star.growth / star.maxGrowth) * 2;
+  mult += star.upgradeLevel * 0.25;
+  if (star.planets) { for (let p of star.planets) { if (p.hasCiv) mult += p.civSize * 0.15; } }
+  return type.essence * mult;
+}
+
+function findStarAt(sx, sy) {
+  const world = screenToWorld(sx, sy);
+  const threshold = 30 / camera.zoom;
+  for (let i = state.stars.length - 1; i >= 0; i--) {
+    const s = state.stars[i];
+    const type = STAR_TYPES[s.typeIdx];
+    const size = type.size * (0.4 + (s.growth / s.maxGrowth) * 0.6);
+    if (Math.hypot(world.x - s.x, world.y - s.y) < size + threshold) return s;
+  }
+  return null;
+}
+
+// ─── GAME LOOP ───────────────────────────────────────
+function gameLoop(now) {
+  if (!state.lastTick) state.lastTick = now;
+  let dt = (now - state.lastTick) / 1000;
+  if (dt > 0.1) dt = 0.1;
+  state.lastTick = now;
+  updateCamera(dt);
+  update(dt);
+  requestAnimationFrame(gameLoop);
+}
+
+// ─── INIT ────────────────────────────────────────────
+loadSuggestions();
+updateSuggestionBadge();
+buildSelector();
+requestAnimationFrame(render);
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
